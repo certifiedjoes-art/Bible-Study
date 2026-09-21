@@ -78,7 +78,12 @@
     promises:"none stated yet in this chapter",
     commands:"be fruitful and multiply, fill the earth, subdue it, rule over the creatures (to mankind)",
     summary:"God speaks the world into ordered existence, piece by piece, and calls it good.",
-    question:"Why six days specifically, and why does day seven matter enough to be its own thing?"
+    question:"Why six days specifically, and why does day seven matter enough to be its own thing?",
+    sections:[
+      {id:"s1", title:"vv. 1–2 — before", text:"Formless, empty, dark — nothing shaped or filled yet. The Spirit is already there, hovering."},
+      {id:"s2", title:"vv. 3–13 — days 1–3 (forming)", text:"Light/dark, sky/sea, land/plants. God separates and names things."},
+      {id:"s3", title:"vv. 14–31 — days 4–6 (filling)", text:"Sun/moon/stars fill the light and dark; birds/fish fill sky and sea; animals and people fill the land. Each 'filling' day matches a 'forming' day from before."}
+    ]
   };
 
   function loadState(){
@@ -167,11 +172,14 @@
     }).join("");
   }
 
+  function hasSections(e){
+    return e && e.sections && e.sections.some(function(s){ return (s.title||s.text); });
+  }
   function countDone(book){
     var n = 0;
     for (var c=1;c<=book.chapters;c++){
       var e = state.entries[key(book.name,c)];
-      if (e && (e.history||e.geography||e.promises||e.commands||e.summary)) n++;
+      if (e && (e.history||e.geography||e.promises||e.commands||e.summary||hasSections(e))) n++;
     }
     return n;
   }
@@ -184,7 +192,7 @@
     var html = "";
     for (var c=1;c<=book.chapters;c++){
       var e = state.entries[key(book.name,c)];
-      var filled = e && (e.history||e.geography||e.promises||e.commands||e.summary);
+      var filled = e && (e.history||e.geography||e.promises||e.commands||e.summary||hasSections(e));
       html += '<button type="button" data-ch="'+c+'" class="'+(filled?"done":"")+'"'+
         (c===state.current.chapter?' aria-current="true"':'')+
         ' aria-label="'+esc(book.name)+' '+c+(filled?", has notes":", no notes yet")+'">'+c+'</button>';
@@ -301,9 +309,70 @@
   };
   var form = document.getElementById("entryForm");
   var clearBtn = document.getElementById("clearBtn");
+  var sectionsList = document.getElementById("sectionsList");
+  var addSectionBtn = document.getElementById("addSectionBtn");
 
   var clearArmed = false;
   var clearArmedTimer = null;
+  var sectionSeq = 0;
+
+  function sectionRowHtml(s){
+    sectionSeq++;
+    var domId = "sec-" + sectionSeq;
+    return '<div class="section-row" data-id="'+esc(s.id)+'">'+
+      '<div class="section-row-head">'+
+        '<input type="text" class="section-title" data-role="title" placeholder="Section title — e.g. vv. 1–10" value="'+esc(s.title||"")+'">'+
+        '<button type="button" class="section-remove" data-role="remove" aria-label="Remove section">✕</button>'+
+      '</div>'+
+      '<textarea rows="2" data-role="text" placeholder="What do you notice here?">'+esc(s.text||"")+'</textarea>'+
+    '</div>';
+  }
+
+  function renderSections(sections){
+    if (!sections || !sections.length){
+      sectionsList.innerHTML = '<p class="sections-empty">No sections yet — break this chapter up if it helps.</p>';
+      return;
+    }
+    sectionsList.innerHTML = sections.map(sectionRowHtml).join("");
+    Array.prototype.forEach.call(sectionsList.querySelectorAll('[data-role="remove"]'), function(btn){
+      btn.addEventListener("click", function(){
+        btn.closest(".section-row").remove();
+        if (!sectionsList.querySelector(".section-row")){
+          sectionsList.innerHTML = '<p class="sections-empty">No sections yet — break this chapter up if it helps.</p>';
+        }
+      });
+    });
+  }
+
+  function readSectionsFromDom(){
+    var rows = sectionsList.querySelectorAll(".section-row");
+    var out = [];
+    Array.prototype.forEach.call(rows, function(row){
+      var title = row.querySelector('[data-role="title"]').value.trim();
+      var text = row.querySelector('[data-role="text"]').value.trim();
+      if (title || text){
+        out.push({id: row.getAttribute("data-id") || ("s"+Date.now()+Math.random().toString(36).slice(2,6)), title:title, text:text});
+      }
+    });
+    return out;
+  }
+
+  addSectionBtn.addEventListener("click", function(){
+    var placeholder = sectionsList.querySelector(".sections-empty");
+    if (placeholder) sectionsList.innerHTML = "";
+    var newId = "s" + Date.now() + Math.random().toString(36).slice(2,6);
+    sectionsList.insertAdjacentHTML("beforeend", sectionRowHtml({id:newId, title:"", text:""}));
+    var rows = sectionsList.querySelectorAll(".section-row");
+    var last = rows[rows.length-1];
+    var removeBtn = last.querySelector('[data-role="remove"]');
+    removeBtn.addEventListener("click", function(){
+      removeBtn.closest(".section-row").remove();
+      if (!sectionsList.querySelector(".section-row")){
+        sectionsList.innerHTML = '<p class="sections-empty">No sections yet — break this chapter up if it helps.</p>';
+      }
+    });
+    last.querySelector('[data-role="title"]').focus();
+  });
 
   function renderEntry(){
     var book = findBook(state.current.book);
@@ -317,6 +386,7 @@
     fields.commands.value = e.commands || "";
     fields.summary.value = e.summary || "";
     fields.question.value = e.question || "";
+    renderSections(e.sections);
     prevBtn.disabled = state.current.chapter<=1;
     nextBtn.disabled = state.current.chapter>=book.chapters;
     if (clearArmed){
@@ -345,7 +415,8 @@
       promises: fields.promises.value.trim(),
       commands: fields.commands.value.trim(),
       summary: fields.summary.value.trim(),
-      question: fields.question.value.trim()
+      question: fields.question.value.trim(),
+      sections: readSectionsFromDom()
     };
     exampleFlag.hidden = true;
     renderChapterGrid();
@@ -393,6 +464,11 @@
         }
         if (e.promises && !/^none\b/i.test(e.promises.trim())) promiseItems.push({ref:ref, text:e.promises});
         if (e.commands && !/^none\b/i.test(e.commands.trim())) commandItems.push({ref:ref, text:e.commands});
+        if (e.sections && e.sections.length){
+          e.sections.forEach(function(s){
+            if (s.text) historyItems.push({ref: ref + (s.title? " — "+s.title : ""), text: s.text});
+          });
+        }
       }
     });
 
