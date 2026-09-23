@@ -80,9 +80,9 @@
     summary:"God speaks the world into ordered existence, piece by piece, and calls it good.",
     question:"Why six days specifically, and why does day seven matter enough to be its own thing?",
     sections:[
-      {id:"s1", title:"vv. 1–2 — before", text:"Formless, empty, dark — nothing shaped or filled yet. The Spirit is already there, hovering."},
-      {id:"s2", title:"vv. 3–13 — days 1–3 (forming)", text:"Light/dark, sky/sea, land/plants. God separates and names things."},
-      {id:"s3", title:"vv. 14–31 — days 4–6 (filling)", text:"Sun/moon/stars fill the light and dark; birds/fish fill sky and sea; animals and people fill the land. Each 'filling' day matches a 'forming' day from before."}
+      {id:"s1", title:"vv. 1–2", text:""},
+      {id:"s2", title:"vv. 3–13", text:""},
+      {id:"s3", title:"vv. 14–31", text:""}
     ]
   };
 
