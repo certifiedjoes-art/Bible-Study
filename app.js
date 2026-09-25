@@ -73,18 +73,34 @@
 
   var EXAMPLE_KEY = "Genesis-1";
   var EXAMPLE_ENTRY = {
-    history:"God creates the heavens and earth over six days: light, sky, land and seas, sun/moon/stars, sea and air creatures, land animals and mankind. He rests on the seventh day.",
-    geography:"",
-    promises:"none stated yet in this chapter",
-    commands:"be fruitful and multiply, fill the earth, subdue it, rule over the creatures (to mankind)",
     summary:"God speaks the world into ordered existence, piece by piece, and calls it good.",
     question:"Why six days specifically, and why does day seven matter enough to be its own thing?",
     sections:[
-      {id:"s1", title:"vv. 1–2", text:""},
-      {id:"s2", title:"vv. 3–13", text:""},
-      {id:"s3", title:"vv. 14–31", text:""}
+      {id:"s1", title:"vv. 1–2", observations:"", geography:"", promises:"", commands:""},
+      {id:"s2", title:"vv. 3–13", observations:"", geography:"", promises:"", commands:""},
+      {id:"s3", title:"vv. 14–31", observations:"", geography:"", promises:"", commands:""}
     ]
   };
+
+  // Old saved entries (before sections existed) used flat history/geography/promises/commands
+  // fields at the chapter level. Fold those into a single section so nothing is lost.
+  function migrateEntry(e){
+    if (!e) return e;
+    if (!e.sections) e.sections = [];
+    var hasFlat = e.history || e.geography || e.promises || e.commands;
+    if (hasFlat){
+      e.sections.unshift({
+        id: "m" + Date.now() + Math.random().toString(36).slice(2,6),
+        title: "",
+        observations: e.history || "",
+        geography: e.geography || "",
+        promises: e.promises || "",
+        commands: e.commands || ""
+      });
+      delete e.history; delete e.geography; delete e.promises; delete e.commands;
+    }
+    return e;
+  }
 
   function loadState(){
     try {
@@ -105,6 +121,7 @@
 
   var state = loadState();
   if (!state.current) state.current = {book: state.books[0].name, chapter:1};
+  Object.keys(state.entries).forEach(function(k){ state.entries[k] = migrateEntry(state.entries[k]); });
 
   function key(book, ch){ return book + "-" + ch; }
   function findBook(name){
@@ -173,13 +190,15 @@
   }
 
   function hasSections(e){
-    return e && e.sections && e.sections.some(function(s){ return (s.title||s.text); });
+    return e && e.sections && e.sections.some(function(s){
+      return s.title||s.observations||s.geography||s.promises||s.commands;
+    });
   }
   function countDone(book){
     var n = 0;
     for (var c=1;c<=book.chapters;c++){
       var e = state.entries[key(book.name,c)];
-      if (e && (e.history||e.geography||e.promises||e.commands||e.summary||hasSections(e))) n++;
+      if (e && (e.summary||hasSections(e))) n++;
     }
     return n;
   }
@@ -192,7 +211,7 @@
     var html = "";
     for (var c=1;c<=book.chapters;c++){
       var e = state.entries[key(book.name,c)];
-      var filled = e && (e.history||e.geography||e.promises||e.commands||e.summary||hasSections(e));
+      var filled = e && (e.summary||hasSections(e));
       html += '<button type="button" data-ch="'+c+'" class="'+(filled?"done":"")+'"'+
         (c===state.current.chapter?' aria-current="true"':'')+
         ' aria-label="'+esc(book.name)+' '+c+(filled?", has notes":", no notes yet")+'">'+c+'</button>';
@@ -300,10 +319,6 @@
   var prevBtn = document.getElementById("prevChapter");
   var nextBtn = document.getElementById("nextChapter");
   var fields = {
-    history: document.getElementById("f-history"),
-    geography: document.getElementById("f-geography"),
-    promises: document.getElementById("f-promises"),
-    commands: document.getElementById("f-commands"),
     summary: document.getElementById("f-summary"),
     question: document.getElementById("f-question")
   };
@@ -314,34 +329,60 @@
 
   var clearArmed = false;
   var clearArmedTimer = null;
-  var sectionSeq = 0;
 
-  function sectionRowHtml(s){
-    sectionSeq++;
-    var domId = "sec-" + sectionSeq;
+  function newSectionId(){ return "s" + Date.now() + Math.random().toString(36).slice(2,6); }
+
+  function sectionRowHtml(s, num){
     return '<div class="section-row" data-id="'+esc(s.id)+'">'+
       '<div class="section-row-head">'+
+        '<span class="section-num">'+num+'</span>'+
         '<input type="text" class="section-title" data-role="title" placeholder="Section title — e.g. vv. 1–10" value="'+esc(s.title||"")+'">'+
         '<button type="button" class="section-remove" data-role="remove" aria-label="Remove section">✕</button>'+
       '</div>'+
-      '<textarea rows="2" data-role="text" placeholder="What do you notice here?">'+esc(s.text||"")+'</textarea>'+
+      '<div class="mini-field observations">'+
+        '<label><span class="tag">Observations</span>Who, what happened, when, what led here?</label>'+
+        '<textarea rows="2" data-role="observations" placeholder="What do you notice in this part?">'+esc(s.observations||"")+'</textarea>'+
+      '</div>'+
+      '<div class="mini-field geography">'+
+        '<label><span class="tag">Geography</span>Places named<span class="hint">comma-separated</span></label>'+
+        '<input type="text" data-role="geography" placeholder="e.g. Eden, the Pishon, Cush" value="'+esc(s.geography||"")+'">'+
+      '</div>'+
+      '<div class="mini-row2">'+
+        '<div class="mini-field promises">'+
+          '<label><span class="tag">Promises</span>What God says He will do</label>'+
+          '<textarea rows="2" data-role="promises" placeholder="e.g. none stated yet">'+esc(s.promises||"")+'</textarea>'+
+        '</div>'+
+        '<div class="mini-field commands">'+
+          '<label><span class="tag">Commands</span>What we\'re told to do</label>'+
+          '<textarea rows="2" data-role="commands" placeholder="e.g. be fruitful and multiply">'+esc(s.commands||"")+'</textarea>'+
+        '</div>'+
+      '</div>'+
     '</div>';
+  }
+
+  function wireSectionRemove(btn){
+    btn.addEventListener("click", function(){
+      btn.closest(".section-row").remove();
+      renumberSections();
+      if (!sectionsList.querySelector(".section-row")){
+        sectionsList.innerHTML = '<p class="sections-empty">No sections yet — add one below, starting from the top of the chapter.</p>';
+      }
+    });
+  }
+
+  function renumberSections(){
+    Array.prototype.forEach.call(sectionsList.querySelectorAll(".section-row"), function(row, i){
+      row.querySelector(".section-num").textContent = i+1;
+    });
   }
 
   function renderSections(sections){
     if (!sections || !sections.length){
-      sectionsList.innerHTML = '<p class="sections-empty">No sections yet — break this chapter up if it helps.</p>';
+      sectionsList.innerHTML = '<p class="sections-empty">No sections yet — add one below, starting from the top of the chapter.</p>';
       return;
     }
-    sectionsList.innerHTML = sections.map(sectionRowHtml).join("");
-    Array.prototype.forEach.call(sectionsList.querySelectorAll('[data-role="remove"]'), function(btn){
-      btn.addEventListener("click", function(){
-        btn.closest(".section-row").remove();
-        if (!sectionsList.querySelector(".section-row")){
-          sectionsList.innerHTML = '<p class="sections-empty">No sections yet — break this chapter up if it helps.</p>';
-        }
-      });
-    });
+    sectionsList.innerHTML = sections.map(function(s,i){ return sectionRowHtml(s, i+1); }).join("");
+    Array.prototype.forEach.call(sectionsList.querySelectorAll('[data-role="remove"]'), wireSectionRemove);
   }
 
   function readSectionsFromDom(){
@@ -349,9 +390,15 @@
     var out = [];
     Array.prototype.forEach.call(rows, function(row){
       var title = row.querySelector('[data-role="title"]').value.trim();
-      var text = row.querySelector('[data-role="text"]').value.trim();
-      if (title || text){
-        out.push({id: row.getAttribute("data-id") || ("s"+Date.now()+Math.random().toString(36).slice(2,6)), title:title, text:text});
+      var observations = row.querySelector('[data-role="observations"]').value.trim();
+      var geography = row.querySelector('[data-role="geography"]').value.trim();
+      var promises = row.querySelector('[data-role="promises"]').value.trim();
+      var commands = row.querySelector('[data-role="commands"]').value.trim();
+      if (title || observations || geography || promises || commands){
+        out.push({
+          id: row.getAttribute("data-id") || newSectionId(),
+          title:title, observations:observations, geography:geography, promises:promises, commands:commands
+        });
       }
     });
     return out;
@@ -360,17 +407,11 @@
   addSectionBtn.addEventListener("click", function(){
     var placeholder = sectionsList.querySelector(".sections-empty");
     if (placeholder) sectionsList.innerHTML = "";
-    var newId = "s" + Date.now() + Math.random().toString(36).slice(2,6);
-    sectionsList.insertAdjacentHTML("beforeend", sectionRowHtml({id:newId, title:"", text:""}));
+    var num = sectionsList.querySelectorAll(".section-row").length + 1;
+    sectionsList.insertAdjacentHTML("beforeend", sectionRowHtml({id:newSectionId(), title:"", observations:"", geography:"", promises:"", commands:""}, num));
     var rows = sectionsList.querySelectorAll(".section-row");
     var last = rows[rows.length-1];
-    var removeBtn = last.querySelector('[data-role="remove"]');
-    removeBtn.addEventListener("click", function(){
-      removeBtn.closest(".section-row").remove();
-      if (!sectionsList.querySelector(".section-row")){
-        sectionsList.innerHTML = '<p class="sections-empty">No sections yet — break this chapter up if it helps.</p>';
-      }
-    });
+    wireSectionRemove(last.querySelector('[data-role="remove"]'));
     last.querySelector('[data-role="title"]').focus();
   });
 
@@ -380,10 +421,6 @@
     var e = state.entries[k] || {};
     entryTitle.textContent = book.name + " " + state.current.chapter;
     exampleFlag.hidden = k !== EXAMPLE_KEY;
-    fields.history.value = e.history || "";
-    fields.geography.value = e.geography || "";
-    fields.promises.value = e.promises || "";
-    fields.commands.value = e.commands || "";
     fields.summary.value = e.summary || "";
     fields.question.value = e.question || "";
     renderSections(e.sections);
@@ -410,10 +447,6 @@
     var book = findBook(state.current.book);
     var k = key(book.name, state.current.chapter);
     state.entries[k] = {
-      history: fields.history.value.trim(),
-      geography: fields.geography.value.trim(),
-      promises: fields.promises.value.trim(),
-      commands: fields.commands.value.trim(),
       summary: fields.summary.value.trim(),
       question: fields.question.value.trim(),
       sections: readSectionsFromDom()
@@ -456,17 +489,18 @@
         var e = state.entries[key(book.name,c)];
         if (!e) continue;
         var ref = book.name + " " + c;
-        if (e.history) historyItems.push({ref:ref, text:e.summary || e.history});
-        if (e.geography) {
-          e.geography.split(",").map(function(s){return s.trim();}).filter(Boolean).forEach(function(place){
-            geoItems.push({ref:ref, text:place});
-          });
-        }
-        if (e.promises && !/^none\b/i.test(e.promises.trim())) promiseItems.push({ref:ref, text:e.promises});
-        if (e.commands && !/^none\b/i.test(e.commands.trim())) commandItems.push({ref:ref, text:e.commands});
+        if (e.summary) historyItems.push({ref:ref, text:e.summary});
         if (e.sections && e.sections.length){
           e.sections.forEach(function(s){
-            if (s.text) historyItems.push({ref: ref + (s.title? " — "+s.title : ""), text: s.text});
+            var sref = ref + (s.title? " — "+s.title : "");
+            if (s.observations) historyItems.push({ref:sref, text:s.observations});
+            if (s.geography){
+              s.geography.split(",").map(function(t){return t.trim();}).filter(Boolean).forEach(function(place){
+                geoItems.push({ref:sref, text:place});
+              });
+            }
+            if (s.promises && !/^none\b/i.test(s.promises.trim())) promiseItems.push({ref:sref, text:s.promises});
+            if (s.commands && !/^none\b/i.test(s.commands.trim())) commandItems.push({ref:sref, text:s.commands});
           });
         }
       }

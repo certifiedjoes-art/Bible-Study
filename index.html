@@ -210,12 +210,31 @@
     border:1px solid var(--line); border-radius:7px; width:28px; height:28px; cursor:pointer;
   }
   .section-row .section-remove:hover{color:var(--command); border-color:var(--command);}
+  .section-row .section-num{
+    flex:none; font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:600; color:var(--ink-soft);
+    background:var(--paper); border:1px solid var(--line); border-radius:7px; width:28px; height:28px;
+    display:flex; align-items:center; justify-content:center;
+  }
   .section-row textarea{
     width:100%; font-family:'Work Sans',sans-serif; font-size:13.5px; color:var(--ink);
     background:var(--paper); border:1px solid var(--line); border-radius:7px; padding:9px 10px; resize:vertical; line-height:1.5;
   }
-  .section-row textarea:focus, .section-row .section-title:focus{outline:2px solid var(--accent); outline-offset:1px;}
+  .section-row input[type=text]{
+    width:100%; font-family:'Work Sans',sans-serif; font-size:13.5px; color:var(--ink);
+    background:var(--paper); border:1px solid var(--line); border-radius:7px; padding:9px 10px;
+  }
+  .section-row textarea:focus, .section-row input:focus{outline:2px solid var(--accent); outline-offset:1px;}
   .sections-empty{font-size:12.5px; color:var(--ink-soft); font-style:italic; margin:0 0 10px;}
+  .mini-field{margin-bottom:10px;}
+  .mini-field label{display:flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; margin-bottom:5px; color:var(--ink);}
+  .mini-field .tag{font-family:'JetBrains Mono',monospace; font-size:9.5px; text-transform:uppercase; letter-spacing:0.05em; padding:2px 6px; border-radius:5px;}
+  .mini-field .hint{font-size:11px; color:var(--ink-soft); font-weight:400; margin-left:auto;}
+  .mini-field.observations .tag{background:var(--history-bg); color:var(--history);}
+  .mini-field.geography .tag{background:var(--geography-bg); color:var(--geography);}
+  .mini-field.promises .tag{background:var(--promise-bg); color:var(--promise);}
+  .mini-field.commands .tag{background:var(--command-bg); color:var(--command);}
+  .mini-row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  @media (max-width:520px){ .mini-row2{grid-template-columns:1fr;} }
   .add-section-btn{
     font-family:'Work Sans',sans-serif; font-size:12.5px; font-weight:600; color:var(--accent-ink);
     background:transparent; border:1px dashed var(--line); border-radius:8px; padding:8px 12px; cursor:pointer;
@@ -316,27 +335,9 @@
       </div>
 
       <form id="entryForm">
-        <div class="field history">
-          <label for="f-history"><span class="tag">Observations</span>Who, what happened, when, what led here?</label>
-          <textarea id="f-history" rows="2" placeholder="e.g. God creates the heavens and earth over six days, then rests on the seventh."></textarea>
-        </div>
-        <div class="field geography">
-          <label for="f-geography"><span class="tag">Geography</span>Every place named<span class="hint">comma-separated</span></label>
-          <input type="text" id="f-geography" placeholder="e.g. Eden, the Pishon, Cush">
-        </div>
-        <div class="row2">
-          <div class="field promises">
-            <label for="f-promises"><span class="tag">Promises</span>What God says He will do</label>
-            <textarea id="f-promises" rows="3" placeholder="e.g. none stated yet in this chapter"></textarea>
-          </div>
-          <div class="field commands">
-            <label for="f-commands"><span class="tag">Commands</span>What we're told to do — and to whom</label>
-            <textarea id="f-commands" rows="3" placeholder="e.g. be fruitful and multiply, fill the earth (to mankind)"></textarea>
-          </div>
-        </div>
         <div class="field sections-field">
-          <label>Break the chapter into sections<span class="hint">optional</span></label>
-          <p class="section-help">Title a chunk of the chapter however you like — a verse range, a scene, a speech — and jot what you notice in it.</p>
+          <label>Sections, starting from the top of the chapter</label>
+          <p class="section-help">Break the chapter into pieces — a verse range, a scene, a speech — title each one, then mark what you find in it.</p>
           <div id="sectionsList"></div>
           <button type="button" class="add-section-btn" id="addSectionBtn">+ Add section</button>
         </div>
@@ -382,10 +383,10 @@
 <section id="view-method" hidden>
   <div class="panel method-page">
     <h2>How this works</h2>
-    <p>Each sitting covers one chapter or a short passage. Read it twice — once straight through, once slowly with a pencil — then fill in what you found under each heading.</p>
+    <p>Each sitting covers one chapter or a short passage. Read it twice — once straight through, once slowly with a pencil — then break it into sections and fill in what you found in each one.</p>
     <ol class="steps">
       <li><span class="step-num">1</span><div><strong>Read it twice.</strong><span class="d">First for the shape of the passage, second to mark it up.</span></div></li>
-      <li><span class="step-num">2</span><div><strong>Mark the four things.</strong><span class="d">Observations (who, what, when, what came before), geography (every place named — look each one up), promises (what God says He will do), commands (what we're told to do, and to whom).</span></div></li>
+      <li><span class="step-num">2</span><div><strong>Split it into sections and mark the four things.</strong><span class="d">Starting from the top of the chapter, title each section (a verse range, a scene, a speech), then note its observations (who, what, when, what came before), geography (every place named — look each one up), promises (what God says He will do), and commands (what we're told to do, and to whom).</span></div></li>
       <li><span class="step-num">3</span><div><strong>Summarize in one sentence.</strong><span class="d">In your own words, not the text's. If you can't, you haven't found the center yet.</span></div></li>
       <li><span class="step-num">4</span><div><strong>Write down one open question.</strong><span class="d">Something you couldn't answer. Come back to it as later chapters fill it in.</span></div></li>
     </ol>
