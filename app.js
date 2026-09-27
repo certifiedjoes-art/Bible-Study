@@ -1,3 +1,35 @@
+// ---------- Auto-update check ----------
+// iOS often "resumes" a home-screen app from memory instead of reloading it, so it can
+// keep showing an old version indefinitely with no network request at all. This checks
+// a tiny version file every time the app becomes visible, and silently reloads (no
+// prompt) if a newer version has been published.
+(function(){
+  var VERSION_KEY = "appVersionSeen";
+  function checkVersion(){
+    fetch("version.json?_=" + Date.now(), {cache:"no-store"})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(data){
+        if (!data || !data.v) return;
+        var seen = null;
+        try { seen = window.localStorage.getItem(VERSION_KEY); } catch(e){}
+        if (seen && seen !== data.v){
+          try { window.localStorage.setItem(VERSION_KEY, data.v); } catch(e){}
+          window.location.replace(window.location.pathname + "?_=" + Date.now());
+          return;
+        }
+        if (!seen){
+          try { window.localStorage.setItem(VERSION_KEY, data.v); } catch(e){}
+        }
+      })
+      .catch(function(){ /* offline, or fetch blocked — just keep whatever is already loaded */ });
+  }
+  checkVersion();
+  document.addEventListener("visibilitychange", function(){
+    if (document.visibilityState === "visible") checkVersion();
+  });
+  window.addEventListener("pageshow", function(){ checkVersion(); });
+})();
+
 (function(){
   "use strict";
 
