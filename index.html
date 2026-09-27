@@ -3,9 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Field Notes — Bible Study Journal</title>
+<title>Bible Study</title>
 <meta name="description" content="An inductive Bible study journal: pick a book, work chapter by chapter, and log history, geography, promises and commands yourself — no scripture text included.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%232C6E6B'/%3E%3Cpath d='M11 3h2v8h8v2h-8v8h-2v-8H3v-2h8z' fill='%23F8F9F4'/%3E%3C/svg%3E">
+<link rel="icon" href="favicon-32.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Bible Study">
+<meta name="theme-color" content="#2C6E6B">
 <style>
   :root{
     color-scheme: light;
@@ -81,7 +87,7 @@
   }
   header.top .title-block{display:flex; flex-direction:column; gap:4px;}
   header.top .title-row{display:flex; align-items:center; gap:9px;}
-  header.top .logo-cross{flex:none; width:26px; height:26px; border-radius:6px; background:var(--accent);}
+  header.top .logo-cross{flex:none; width:28px; height:28px; border-radius:7px; object-fit:cover;}
   header.top h1{font-size:26px; font-weight:600; letter-spacing:-0.01em;}
   .save-status{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--ink-soft); min-height:14px;}
 
@@ -282,8 +288,8 @@
   <div class="title-block">
     <span class="eyebrow">Inductive study journal</span>
     <div class="title-row">
-      <svg class="logo-cross" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="var(--accent)"/><path d="M11 3h2v8h8v2h-8v8h-2v-8H3v-2h8z" fill="var(--paper)"/></svg>
-      <h1>Field Notes</h1>
+      <img class="logo-cross" src="icon-64.png" alt="" aria-hidden="true">
+      <h1>Bible Study</h1>
     </div>
   </div>
   <nav class="tabs" role="tablist" aria-label="Sections">
