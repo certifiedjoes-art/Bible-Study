@@ -3,6 +3,31 @@
 
   var STORAGE_KEY = "fieldNotesState";
 
+  // ---------- Cloud sync (Firebase) ----------
+  var firebaseConfig = {
+    apiKey: "AIzaSyCI1JUVG26uRTqhDAx1pXIzmGPp9sRoRS4",
+    authDomain: "bible-study-8c876.firebaseapp.com",
+    projectId: "bible-study-8c876",
+    storageBucket: "bible-study-8c876.firebasestorage.app",
+    messagingSenderId: "355160807110",
+    appId: "1:355160807110:web:fa8f384ee25917423629c7",
+    measurementId: "G-2H3YNQ8ZJZ"
+  };
+  var fbAuth = null, fbDb = null, cloudAvailable = false;
+  var cloudUser = null;          // signed-in Firebase user, or null
+  var cloudLoaded = false;       // true once we've pulled the cloud copy at least once this session
+  var suppressCloudSave = false; // true while we're applying a cloud snapshot, so we don't immediately re-save it
+  var cloudSaveTimer = null;
+  var unsubscribeCloudSnapshot = null;
+  try {
+    if (window.firebase){
+      firebase.initializeApp(firebaseConfig);
+      fbAuth = firebase.auth();
+      fbDb = firebase.firestore();
+      cloudAvailable = true;
+    }
+  } catch(e){ cloudAvailable = false; }
+
   var DEFAULT_BOOKS = [
     {name:"Genesis", chapters:50},
     {name:"Exodus", chapters:40},
@@ -143,6 +168,122 @@
       statusEl.textContent = "Couldn't save to this browser — try again";
     }
     setTimeout(function(){ statusEl.textContent = ""; }, 2200);
+    if (!suppressCloudSave) scheduleCloudSave();
+  }
+
+  // ---------- Cloud sync wiring ----------
+  var syncBar = document.getElementById("syncBar");
+  var signInBtn = document.getElementById("signInBtn");
+
+  function cloudDocRef(uid){ return fbDb.collection("notebooks").doc(uid); }
+
+  function setSyncUI(mode){
+    // modes: "signed-out", "loading", "synced", "saving", "error"
+    if (!cloudAvailable){
+      syncBar.innerHTML = '<span style="font-size:12px;color:var(--ink-soft)">Notes are saved in this browser only.</span>';
+      return;
+    }
+    if (mode === "signed-out"){
+      syncBar.innerHTML = '<button type="button" class="sync-btn" id="signInBtn">Sign in with Google to sync your notes</button>';
+      document.getElementById("signInBtn").addEventListener("click", doSignIn);
+      return;
+    }
+    var dotClass = mode === "synced" ? "on" : (mode === "error" ? "" : "busy");
+    var label = mode === "loading" ? "Loading your notes…" :
+                mode === "saving" ? "Saving…" :
+                mode === "error" ? "Couldn't reach the cloud — saved to this browser only" :
+                ("Synced as " + (cloudUser && (cloudUser.email || cloudUser.displayName) || "you"));
+    syncBar.innerHTML =
+      '<span class="sync-dot '+dotClass+'"></span>' +
+      '<span>'+esc(label)+'</span>' +
+      '<button type="button" class="sync-out" id="signOutBtn">Sign out</button>';
+    document.getElementById("signOutBtn").addEventListener("click", doSignOut);
+  }
+
+  function doSignIn(){
+    if (!cloudAvailable) return;
+    var provider = new firebase.auth.GoogleAuthProvider();
+    fbAuth.signInWithPopup(provider).catch(function(){
+      setSyncUI("signed-out");
+    });
+  }
+  function doSignOut(){
+    if (!cloudAvailable) return;
+    fbAuth.signOut();
+  }
+
+  function scheduleCloudSave(){
+    if (!cloudAvailable || !cloudUser) return;
+    clearTimeout(cloudSaveTimer);
+    cloudSaveTimer = setTimeout(function(){
+      setSyncUI("saving");
+      cloudDocRef(cloudUser.uid).set({
+        books: state.books,
+        entries: state.entries,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }).then(function(){
+        setSyncUI("synced");
+      }).catch(function(){
+        setSyncUI("error");
+      });
+    }, 800);
+  }
+
+  function applyCloudSnapshot(data){
+    suppressCloudSave = true;
+    if (data && data.books && data.books.length){
+      state.books = data.books;
+      state.entries = data.entries || {};
+      Object.keys(state.entries).forEach(function(k){ state.entries[k] = migrateEntry(state.entries[k]); });
+      if (!findBookExists(state.current.book)) state.current = {book: state.books[0].name, chapter:1};
+    }
+    renderBookSelect();
+    renderChapterGrid();
+    renderEntry();
+    suppressCloudSave = false;
+  }
+  function findBookExists(name){
+    return state.books.some(function(b){ return b.name === name; });
+  }
+
+  function initCloudSync(){
+    if (!cloudAvailable){
+      setSyncUI("signed-out");
+      return;
+    }
+    signInBtn.addEventListener("click", doSignIn);
+    fbAuth.onAuthStateChanged(function(user){
+      cloudUser = user;
+      if (unsubscribeCloudSnapshot){ unsubscribeCloudSnapshot(); unsubscribeCloudSnapshot = null; }
+      if (!user){
+        cloudLoaded = false;
+        setSyncUI("signed-out");
+        return;
+      }
+      setSyncUI("loading");
+      var ref = cloudDocRef(user.uid);
+      ref.get().then(function(doc){
+        if (doc.exists){
+          applyCloudSnapshot(doc.data());
+          setSyncUI("synced");
+        } else {
+          // First time signing in on this account — push whatever is saved locally up as the starting point.
+          ref.set({
+            books: state.books,
+            entries: state.entries,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          }).then(function(){ setSyncUI("synced"); }).catch(function(){ setSyncUI("error"); });
+        }
+        cloudLoaded = true;
+        // Stay in sync with changes made from another device.
+        unsubscribeCloudSnapshot = ref.onSnapshot(function(snap){
+          if (!cloudLoaded || !snap.exists) return;
+          applyCloudSnapshot(snap.data());
+        });
+      }).catch(function(){
+        setSyncUI("error");
+      });
+    });
   }
 
   // ---------- Tabs ----------
@@ -523,4 +664,5 @@
   renderBookSelect();
   renderChapterGrid();
   renderEntry();
+  initCloudSync();
 })();
