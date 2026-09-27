@@ -235,7 +235,9 @@
   function doSignIn(){
     if (!cloudAvailable) return;
     var provider = new firebase.auth.GoogleAuthProvider();
-    fbAuth.signInWithPopup(provider).catch(function(){
+    // Popup-based sign-in is unreliable in Safari, especially in a home-screen app,
+    // so use a full-page redirect instead — it comes back via getRedirectResult() below.
+    fbAuth.signInWithRedirect(provider).catch(function(){
       setSyncUI("signed-out");
     });
   }
@@ -284,6 +286,11 @@
       return;
     }
     signInBtn.addEventListener("click", doSignIn);
+    // Surface any error from a just-completed redirect sign-in (e.g. the user cancelled).
+    // A successful sign-in is picked up by onAuthStateChanged below, not here.
+    fbAuth.getRedirectResult().catch(function(){
+      setSyncUI("signed-out");
+    });
     fbAuth.onAuthStateChanged(function(user){
       cloudUser = user;
       if (unsubscribeCloudSnapshot){ unsubscribeCloudSnapshot(); unsubscribeCloudSnapshot = null; }
