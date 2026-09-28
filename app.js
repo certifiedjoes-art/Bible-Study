@@ -232,14 +232,25 @@
     document.getElementById("signOutBtn").addEventListener("click", doSignOut);
   }
 
+  function showSyncError(err){
+    var msg = (err && (err.code || err.message)) || "Something went wrong signing in";
+    syncBar.innerHTML =
+      '<span class="sync-dot"></span>' +
+      '<span style="color:var(--command)">'+esc(msg)+'</span>' +
+      '<button type="button" class="sync-btn" id="signInBtn">Try again</button>';
+    document.getElementById("signInBtn").addEventListener("click", doSignIn);
+  }
+
   function doSignIn(){
     if (!cloudAvailable) return;
     var provider = new firebase.auth.GoogleAuthProvider();
     // Popup-based sign-in is unreliable in Safari, especially in a home-screen app,
     // so use a full-page redirect instead — it comes back via getRedirectResult() below.
-    fbAuth.signInWithRedirect(provider).catch(function(){
-      setSyncUI("signed-out");
-    });
+    try {
+      fbAuth.signInWithRedirect(provider).catch(showSyncError);
+    } catch(err){
+      showSyncError(err);
+    }
   }
   function doSignOut(){
     if (!cloudAvailable) return;
@@ -288,9 +299,7 @@
     signInBtn.addEventListener("click", doSignIn);
     // Surface any error from a just-completed redirect sign-in (e.g. the user cancelled).
     // A successful sign-in is picked up by onAuthStateChanged below, not here.
-    fbAuth.getRedirectResult().catch(function(){
-      setSyncUI("signed-out");
-    });
+    fbAuth.getRedirectResult().catch(showSyncError);
     fbAuth.onAuthStateChanged(function(user){
       cloudUser = user;
       if (unsubscribeCloudSnapshot){ unsubscribeCloudSnapshot(); unsubscribeCloudSnapshot = null; }
