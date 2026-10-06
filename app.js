@@ -244,10 +244,22 @@
   function doSignIn(){
     if (!cloudAvailable) return;
     var provider = new firebase.auth.GoogleAuthProvider();
-    // Popup-based sign-in is unreliable in Safari, especially in a home-screen app,
-    // so use a full-page redirect instead — it comes back via getRedirectResult() below.
+    // Popup-based sign-in: everything happens on this one page, so there's no
+    // cross-page marker for Safari to lose track of (which is what was breaking
+    // the previous full-page-redirect approach). Fall back to redirect only if
+    // the browser genuinely can't do a popup here.
+    setSyncUI("loading");
     try {
-      fbAuth.signInWithRedirect(provider).catch(showSyncError);
+      fbAuth.signInWithPopup(provider).catch(function(err){
+        var code = err && err.code;
+        if (code === "auth/popup-blocked" || code === "auth/operation-not-supported-in-this-environment" || code === "auth/cancelled-popup-request"){
+          fbAuth.signInWithRedirect(provider).catch(showSyncError);
+        } else if (code === "auth/popup-closed-by-user"){
+          setSyncUI("signed-out");
+        } else {
+          showSyncError(err);
+        }
+      });
     } catch(err){
       showSyncError(err);
     }
