@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Bible Study</title>
-<meta name="description" content="An inductive Bible study journal: pick a book, work chapter by chapter, and log history, geography, promises and commands yourself — no scripture text included.">
+<meta name="description" content="An inductive Bible study journal: pick a book, work chapter by chapter, and log observations, promises and commands yourself — no scripture text included.">
 <link rel="icon" href="favicon-32.png">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="manifest" href="manifest.json">
@@ -235,10 +235,11 @@
   .mini-field label{display:flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; margin-bottom:5px; color:var(--ink);}
   .mini-field .tag{font-family:'JetBrains Mono',monospace; font-size:9.5px; text-transform:uppercase; letter-spacing:0.05em; padding:2px 6px; border-radius:5px;}
   .mini-field .hint{font-size:11px; color:var(--ink-soft); font-weight:400; margin-left:auto;}
+  .mini-field.summary .tag{background:var(--geography-bg); color:var(--geography);}
   .mini-field.observations .tag{background:var(--history-bg); color:var(--history);}
-  .mini-field.geography .tag{background:var(--geography-bg); color:var(--geography);}
   .mini-field.promises .tag{background:var(--promise-bg); color:var(--promise);}
   .mini-field.commands .tag{background:var(--command-bg); color:var(--command);}
+  .mini-field.question .tag{background:var(--line-soft); color:var(--ink-soft);}
   .mini-row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
   @media (max-width:520px){ .mini-row2{grid-template-columns:1fr;} }
   .add-section-btn{
@@ -246,6 +247,23 @@
     background:transparent; border:1px dashed var(--line); border-radius:8px; padding:8px 12px; cursor:pointer;
   }
   .add-section-btn:hover{border-color:var(--accent);}
+
+  .viewing-row{margin-bottom:16px; padding-bottom:14px; border-bottom:1px solid var(--line-soft);}
+  .viewing-row h2{font-size:14px; font-weight:600; margin-bottom:2px;}
+  .viewing-row select{margin-top:10px;}
+
+  .readonly-banner{
+    font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--promise);
+    background:var(--promise-bg); border-radius:7px; padding:6px 10px; margin:0 0 14px; display:inline-block;
+  }
+  .section-row.readonly{cursor:default;}
+  .section-title-ro{flex:1; font-weight:600; font-size:13.5px; color:var(--ink);}
+  .ro-row{font-size:13px; line-height:1.5; margin-bottom:8px; padding-left:2px;}
+  .ro-row:last-child{margin-bottom:0;}
+  .ro-row .tag{
+    display:inline-block; font-family:'JetBrains Mono',monospace; font-size:9.5px; text-transform:uppercase;
+    letter-spacing:0.05em; padding:2px 6px; border-radius:5px; margin-right:7px; background:var(--line-soft); color:var(--ink-soft);
+  }
 
   .actions{display:flex; align-items:center; gap:12px; margin-top:6px;}
   .save-btn{
@@ -323,6 +341,10 @@
 <section id="view-study">
   <div class="layout">
     <div class="panel rail">
+      <div class="viewing-row" id="viewingRow" hidden>
+        <h2>Viewing</h2>
+        <select class="book-select" id="viewingSelect"></select>
+      </div>
       <h2>Book</h2>
       <select class="book-select" id="bookSelect"></select>
       <div class="progress-row">
@@ -330,7 +352,7 @@
         <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
       </div>
       <div class="chapter-grid" id="chapterGrid"></div>
-      <div class="rail-actions">
+      <div class="rail-actions" id="railActions">
         <button class="add-book" id="addBookBtn" type="button">+ Add a book</button>
         <button class="add-book" id="browsePlansBtn" type="button">📖 Browse reading plans</button>
       </div>
@@ -353,10 +375,10 @@
         </div>
       </div>
       <span class="example-flag" id="exampleFlag" hidden>Example — edit or clear anytime</span>
+      <p class="readonly-banner" id="readonlyBanner" hidden>Viewing <span id="readonlyName"></span>'s notes — read-only</p>
 
       <div class="method-strip">
         <span class="method-chip"><span class="swatch" style="background:var(--history)"></span>who / what / when</span>
-        <span class="method-chip"><span class="swatch" style="background:var(--geography)"></span>every place named</span>
         <span class="method-chip"><span class="swatch" style="background:var(--promise)"></span>what God says He'll do</span>
         <span class="method-chip"><span class="swatch" style="background:var(--command)"></span>what we're told to do</span>
       </div>
@@ -367,14 +389,6 @@
           <p class="section-help">Break the chapter into pieces — a verse range, a scene, a speech — title each one, then mark what you find in it.</p>
           <div id="sectionsList"></div>
           <button type="button" class="add-section-btn" id="addSectionBtn">+ Add section</button>
-        </div>
-        <div class="field">
-          <label for="f-summary">One-sentence summary, in your own words</label>
-          <input type="text" id="f-summary" placeholder="e.g. God speaks the world into ordered existence, piece by piece.">
-        </div>
-        <div class="field">
-          <label for="f-question">A question you couldn't answer yet</label>
-          <input type="text" id="f-question" placeholder="e.g. Why six days specifically, and why rest on the seventh?">
         </div>
         <div class="actions">
           <button type="submit" class="save-btn" id="saveBtn">Save entry</button>
@@ -393,10 +407,6 @@
       <div id="list-history"></div>
     </div>
     <div class="panel findings-card">
-      <h3><span class="swatch" style="background:var(--geography)"></span>Gazetteer</h3>
-      <div id="list-geography"></div>
-    </div>
-    <div class="panel findings-card">
       <h3><span class="swatch" style="background:var(--promise)"></span>Promises</h3>
       <div id="list-promises"></div>
     </div>
@@ -413,9 +423,9 @@
     <p>Each sitting covers one chapter or a short passage. Read it twice — once straight through, once slowly with a pencil — then break it into sections and fill in what you found in each one.</p>
     <ol class="steps">
       <li><span class="step-num">1</span><div><strong>Read it twice.</strong><span class="d">First for the shape of the passage, second to mark it up.</span></div></li>
-      <li><span class="step-num">2</span><div><strong>Split it into sections and mark the four things.</strong><span class="d">Starting from the top of the chapter, title each section (a verse range, a scene, a speech), then note its observations (who, what, when, what came before), geography (every place named — look each one up), promises (what God says He will do), and commands (what we're told to do, and to whom).</span></div></li>
-      <li><span class="step-num">3</span><div><strong>Summarize in one sentence.</strong><span class="d">In your own words, not the text's. If you can't, you haven't found the center yet.</span></div></li>
-      <li><span class="step-num">4</span><div><strong>Write down one open question.</strong><span class="d">Something you couldn't answer. Come back to it as later chapters fill it in.</span></div></li>
+      <li><span class="step-num">2</span><div><strong>Split it into sections and mark what you find.</strong><span class="d">Starting from the top of the chapter, title each section (a verse range, a scene, a speech), then note its observations (who, what, when, what came before, including any places named), promises (what God says He will do), and commands (what we're told to do, and to whom).</span></div></li>
+      <li><span class="step-num">3</span><div><strong>Summarize each section in one sentence.</strong><span class="d">In your own words, not the text's. If you can't, you haven't found the center of that part yet.</span></div></li>
+      <li><span class="step-num">4</span><div><strong>Write down one open question per section.</strong><span class="d">Something you couldn't answer there. Come back to it as later chapters fill it in.</span></div></li>
     </ol>
     <p>Aim for 20–30 minutes, four or five days a week. One book at a time beats a whole-Bible plan — the Findings tab collects your timeline, gazetteer, promises and commands automatically as you go, so the big picture builds itself.</p>
     <div class="plan-order">

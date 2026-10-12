@@ -130,31 +130,46 @@
 
   var EXAMPLE_KEY = "Genesis-1";
   var EXAMPLE_ENTRY = {
-    summary:"God speaks the world into ordered existence, piece by piece, and calls it good.",
-    question:"Why six days specifically, and why does day seven matter enough to be its own thing?",
     sections:[
-      {id:"s1", title:"vv. 1–2", observations:"", geography:"", promises:"", commands:""},
-      {id:"s2", title:"vv. 3–13", observations:"", geography:"", promises:"", commands:""},
-      {id:"s3", title:"vv. 14–31", observations:"", geography:"", promises:"", commands:""}
+      {id:"s1", title:"vv. 1–2", summary:"", observations:"", promises:"", commands:"", question:""},
+      {id:"s2", title:"vv. 3–13", summary:"", observations:"", promises:"", commands:"", question:""},
+      {id:"s3", title:"vv. 14–31", summary:"", observations:"", promises:"", commands:"", question:""}
     ]
   };
 
-  // Old saved entries (before sections existed) used flat history/geography/promises/commands
-  // fields at the chapter level. Fold those into a single section so nothing is lost.
+  // Older saves used shapes this app no longer has: flat chapter-level fields (before
+  // sections existed), a separate per-section Geography field, and chapter-level
+  // Summary/Question (before they moved into each section). Fold all of that forward
+  // so nothing already written gets lost.
   function migrateEntry(e){
     if (!e) return e;
     if (!e.sections) e.sections = [];
     var hasFlat = e.history || e.geography || e.promises || e.commands;
     if (hasFlat){
+      var obs = e.history || "";
+      if (e.geography) obs = obs ? obs + "\nGeography: " + e.geography : "Geography: " + e.geography;
       e.sections.unshift({
         id: "m" + Date.now() + Math.random().toString(36).slice(2,6),
-        title: "",
-        observations: e.history || "",
-        geography: e.geography || "",
-        promises: e.promises || "",
-        commands: e.commands || ""
+        title: "", summary:"", observations: obs, promises: e.promises || "", commands: e.commands || "", question: ""
       });
       delete e.history; delete e.geography; delete e.promises; delete e.commands;
+    }
+    e.sections.forEach(function(s){
+      if (s.geography){
+        s.observations = (s.observations ? s.observations + "\n" : "") + "Geography: " + s.geography;
+        delete s.geography;
+      }
+      if (s.summary === undefined) s.summary = "";
+      if (s.question === undefined) s.question = "";
+    });
+    if (e.summary || e.question){
+      if (!e.sections.length){
+        e.sections.push({id:"m"+Date.now()+Math.random().toString(36).slice(2,6), title:"", summary:e.summary||"", observations:"", promises:"", commands:"", question:e.question||""});
+      } else {
+        if (e.summary && !e.sections[0].summary) e.sections[0].summary = e.summary;
+        if (e.question && !e.sections[0].question) e.sections[0].question = e.question;
+      }
+      delete e.summary; delete e.question;
     }
     return e;
   }
@@ -180,10 +195,22 @@
   if (!state.current) state.current = {book: state.books[0].name, chapter:1};
   Object.keys(state.entries).forEach(function(k){ state.entries[k] = migrateEntry(state.entries[k]); });
 
+  // ---------- Viewing someone else's notes (read-only) ----------
+  // viewingUid is null while looking at your own notes (the normal, editable case).
+  // When set, ctx() points at otherData (a one-time fetch of that person's notebook)
+  // instead of your own state, and the Study tab switches to a read-only display.
+  var viewingUid = null;
+  var otherData = null;
+  var membersMap = {};
+  var unsubscribeMembers = null;
+  function ctx(){ return (viewingUid && otherData) ? otherData : state; }
+  function isEditable(){ return !viewingUid; }
+
   function key(book, ch){ return book + "-" + ch; }
   function findBook(name){
-    for (var i=0;i<state.books.length;i++){ if (state.books[i].name===name) return state.books[i]; }
-    return state.books[0];
+    var c = ctx();
+    for (var i=0;i<c.books.length;i++){ if (c.books[i].name===name) return c.books[i]; }
+    return c.books[0];
   }
   function esc(s){
     return String(s==null?"":s).replace(/[&<>"']/g, function(c){
@@ -303,6 +330,27 @@
     return state.books.some(function(b){ return b.name === name; });
   }
 
+  // ---------- Members directory (so you can find each other to compare notes) ----------
+  function publishMembership(user){
+    fbDb.collection("members").doc(user.uid).set({
+      name: user.displayName || (user.email ? user.email.split("@")[0] : "Someone"),
+      email: user.email || "",
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, {merge:true}).catch(function(){ /* non-essential — ignore */ });
+  }
+  function subscribeMembers(){
+    if (unsubscribeMembers){ unsubscribeMembers(); unsubscribeMembers = null; }
+    unsubscribeMembers = fbDb.collection("members").onSnapshot(function(snap){
+      membersMap = {};
+      snap.forEach(function(doc){ membersMap[doc.id] = doc.data(); });
+      renderViewingSelect();
+    }, function(){ /* ignore — comparing notes is optional, your own notes still work */ });
+  }
+  function stopViewingOther(){
+    viewingUid = null;
+    otherData = null;
+  }
+
   function initCloudSync(){
     if (!cloudAvailable){
       setSyncUI("signed-out");
@@ -318,9 +366,16 @@
       if (!user){
         cloudLoaded = false;
         setSyncUI("signed-out");
+        if (unsubscribeMembers){ unsubscribeMembers(); unsubscribeMembers = null; }
+        membersMap = {};
+        stopViewingOther();
+        renderViewingSelect();
+        renderBookSelect(); renderChapterGrid(); renderEntry();
         return;
       }
       setSyncUI("loading");
+      publishMembership(user);
+      subscribeMembers();
       var ref = cloudDocRef(user.uid);
       ref.get().then(function(doc){
         if (doc.exists){
@@ -383,44 +438,51 @@
   var plansModal = document.getElementById("plansModal");
   var plansList = document.getElementById("plansList");
   var closePlansModal = document.getElementById("closePlansModal");
+  var railActions = document.getElementById("railActions");
+  var viewingRow = document.getElementById("viewingRow");
+  var viewingSelect = document.getElementById("viewingSelect");
+  var readonlyBanner = document.getElementById("readonlyBanner");
+  var readonlyName = document.getElementById("readonlyName");
 
   function renderBookSelect(){
-    bookSelect.innerHTML = state.books.map(function(b){
-      return '<option value="'+esc(b.name)+'"'+(b.name===state.current.book?" selected":"")+'>'+esc(b.name)+'</option>';
+    var c = ctx();
+    bookSelect.innerHTML = c.books.map(function(b){
+      return '<option value="'+esc(b.name)+'"'+(b.name===c.current.book?" selected":"")+'>'+esc(b.name)+'</option>';
     }).join("");
   }
 
   function hasSections(e){
     return e && e.sections && e.sections.some(function(s){
-      return s.title||s.observations||s.geography||s.promises||s.commands;
+      return s.title||s.summary||s.observations||s.promises||s.commands||s.question;
     });
   }
   function countDone(book){
-    var n = 0;
-    for (var c=1;c<=book.chapters;c++){
-      var e = state.entries[key(book.name,c)];
-      if (e && (e.summary||hasSections(e))) n++;
+    var n = 0, c = ctx();
+    for (var ch=1;ch<=book.chapters;ch++){
+      var e = c.entries[key(book.name,ch)];
+      if (hasSections(e)) n++;
     }
     return n;
   }
 
   function renderChapterGrid(){
-    var book = findBook(state.current.book);
+    var c = ctx();
+    var book = findBook(c.current.book);
     var done = countDone(book);
     progressLabel.textContent = done + " / " + book.chapters;
     progressFill.style.width = (book.chapters? (done/book.chapters*100):0) + "%";
     var html = "";
-    for (var c=1;c<=book.chapters;c++){
-      var e = state.entries[key(book.name,c)];
-      var filled = e && (e.summary||hasSections(e));
-      html += '<button type="button" data-ch="'+c+'" class="'+(filled?"done":"")+'"'+
-        (c===state.current.chapter?' aria-current="true"':'')+
-        ' aria-label="'+esc(book.name)+' '+c+(filled?", has notes":", no notes yet")+'">'+c+'</button>';
+    for (var ch=1;ch<=book.chapters;ch++){
+      var e = c.entries[key(book.name,ch)];
+      var filled = hasSections(e);
+      html += '<button type="button" data-ch="'+ch+'" class="'+(filled?"done":"")+'"'+
+        (ch===c.current.chapter?' aria-current="true"':'')+
+        ' aria-label="'+esc(book.name)+' '+ch+(filled?", has notes":", no notes yet")+'">'+ch+'</button>';
     }
     chapterGrid.innerHTML = html;
     Array.prototype.forEach.call(chapterGrid.querySelectorAll("button"), function(btn){
       btn.addEventListener("click", function(){
-        state.current.chapter = parseInt(btn.getAttribute("data-ch"),10);
+        ctx().current.chapter = parseInt(btn.getAttribute("data-ch"),10);
         renderChapterGrid();
         renderEntry();
       });
@@ -428,8 +490,9 @@
   }
 
   bookSelect.addEventListener("change", function(){
-    state.current.book = bookSelect.value;
-    state.current.chapter = 1;
+    var c = ctx();
+    c.current.book = bookSelect.value;
+    c.current.chapter = 1;
     renderChapterGrid();
     renderEntry();
   });
@@ -519,10 +582,6 @@
   var exampleFlag = document.getElementById("exampleFlag");
   var prevBtn = document.getElementById("prevChapter");
   var nextBtn = document.getElementById("nextChapter");
-  var fields = {
-    summary: document.getElementById("f-summary"),
-    question: document.getElementById("f-question")
-  };
   var form = document.getElementById("entryForm");
   var clearBtn = document.getElementById("clearBtn");
   var sectionsList = document.getElementById("sectionsList");
@@ -540,13 +599,13 @@
         '<input type="text" class="section-title" data-role="title" placeholder="Section title — e.g. vv. 1–10" value="'+esc(s.title||"")+'">'+
         '<button type="button" class="section-remove" data-role="remove" aria-label="Remove section">✕</button>'+
       '</div>'+
-      '<div class="mini-field observations">'+
-        '<label><span class="tag">Observations</span>Who, what happened, when, what led here?</label>'+
-        '<textarea rows="2" data-role="observations" placeholder="What do you notice in this part?">'+esc(s.observations||"")+'</textarea>'+
+      '<div class="mini-field summary">'+
+        '<label><span class="tag">Summary</span>One sentence, in your own words</label>'+
+        '<input type="text" data-role="summary" placeholder="e.g. God speaks this part of the world into being" value="'+esc(s.summary||"")+'">'+
       '</div>'+
-      '<div class="mini-field geography">'+
-        '<label><span class="tag">Geography</span>Places named<span class="hint">comma-separated</span></label>'+
-        '<input type="text" data-role="geography" placeholder="e.g. Eden, the Pishon, Cush" value="'+esc(s.geography||"")+'">'+
+      '<div class="mini-field observations">'+
+        '<label><span class="tag">Observations</span>Who, what happened, when, what led here? (Places named too.)</label>'+
+        '<textarea rows="2" data-role="observations" placeholder="What do you notice in this part?">'+esc(s.observations||"")+'</textarea>'+
       '</div>'+
       '<div class="mini-row2">'+
         '<div class="mini-field promises">'+
@@ -557,6 +616,10 @@
           '<label><span class="tag">Commands</span>What we\'re told to do</label>'+
           '<textarea rows="2" data-role="commands" placeholder="e.g. be fruitful and multiply">'+esc(s.commands||"")+'</textarea>'+
         '</div>'+
+      '</div>'+
+      '<div class="mini-field question">'+
+        '<label><span class="tag">Question</span>Something you couldn\'t answer yet</label>'+
+        '<input type="text" data-role="question" placeholder="e.g. Why six days specifically?" value="'+esc(s.question||"")+'">'+
       '</div>'+
     '</div>';
   }
@@ -577,13 +640,34 @@
     });
   }
 
-  function renderSections(sections){
+  function sectionReadOnlyHtml(s, num){
+    var rows = [
+      ["Summary", s.summary],
+      ["Observations", s.observations],
+      ["Promises", s.promises],
+      ["Commands", s.commands],
+      ["Question", s.question]
+    ].filter(function(pair){ return pair[1]; }).map(function(pair){
+      return '<div class="ro-row"><span class="tag">'+esc(pair[0])+'</span>'+esc(pair[1])+'</div>';
+    }).join("");
+    return '<div class="section-row readonly">'+
+      '<div class="section-row-head"><span class="section-num">'+num+'</span>'+
+        '<span class="section-title-ro">'+esc(s.title||"(untitled section)")+'</span></div>'+
+      (rows || '<p class="sections-empty">Nothing logged in this section yet.</p>') +
+    '</div>';
+  }
+
+  function renderSections(sections, editable){
     if (!sections || !sections.length){
-      sectionsList.innerHTML = '<p class="sections-empty">No sections yet — add one below, starting from the top of the chapter.</p>';
+      sectionsList.innerHTML = '<p class="sections-empty">'+(editable ? "No sections yet — add one below, starting from the top of the chapter." : "No sections logged yet.")+'</p>';
       return;
     }
-    sectionsList.innerHTML = sections.map(function(s,i){ return sectionRowHtml(s, i+1); }).join("");
-    Array.prototype.forEach.call(sectionsList.querySelectorAll('[data-role="remove"]'), wireSectionRemove);
+    if (editable){
+      sectionsList.innerHTML = sections.map(function(s,i){ return sectionRowHtml(s, i+1); }).join("");
+      Array.prototype.forEach.call(sectionsList.querySelectorAll('[data-role="remove"]'), wireSectionRemove);
+    } else {
+      sectionsList.innerHTML = sections.map(function(s,i){ return sectionReadOnlyHtml(s, i+1); }).join("");
+    }
   }
 
   function readSectionsFromDom(){
@@ -591,14 +675,15 @@
     var out = [];
     Array.prototype.forEach.call(rows, function(row){
       var title = row.querySelector('[data-role="title"]').value.trim();
+      var summary = row.querySelector('[data-role="summary"]').value.trim();
       var observations = row.querySelector('[data-role="observations"]').value.trim();
-      var geography = row.querySelector('[data-role="geography"]').value.trim();
       var promises = row.querySelector('[data-role="promises"]').value.trim();
       var commands = row.querySelector('[data-role="commands"]').value.trim();
-      if (title || observations || geography || promises || commands){
+      var question = row.querySelector('[data-role="question"]').value.trim();
+      if (title || summary || observations || promises || commands || question){
         out.push({
           id: row.getAttribute("data-id") || newSectionId(),
-          title:title, observations:observations, geography:geography, promises:promises, commands:commands
+          title:title, summary:summary, observations:observations, promises:promises, commands:commands, question:question
         });
       }
     });
@@ -606,50 +691,66 @@
   }
 
   addSectionBtn.addEventListener("click", function(){
+    if (!isEditable()) return;
     var placeholder = sectionsList.querySelector(".sections-empty");
     if (placeholder) sectionsList.innerHTML = "";
     var num = sectionsList.querySelectorAll(".section-row").length + 1;
-    sectionsList.insertAdjacentHTML("beforeend", sectionRowHtml({id:newSectionId(), title:"", observations:"", geography:"", promises:"", commands:""}, num));
+    sectionsList.insertAdjacentHTML("beforeend", sectionRowHtml({id:newSectionId(), title:"", summary:"", observations:"", promises:"", commands:"", question:""}, num));
     var rows = sectionsList.querySelectorAll(".section-row");
     var last = rows[rows.length-1];
     wireSectionRemove(last.querySelector('[data-role="remove"]'));
     last.querySelector('[data-role="title"]').focus();
   });
 
+  function applyViewMode(){
+    var editable = isEditable();
+    addSectionBtn.hidden = !editable;
+    form.querySelector(".actions").hidden = !editable;
+    railActions.hidden = !editable;
+    if (!editable) addBookForm.hidden = true;
+    readonlyBanner.hidden = editable;
+    if (!editable){
+      var m = membersMap[viewingUid];
+      readonlyName.textContent = (m && m.name) || "their";
+    }
+  }
+
   function renderEntry(){
-    var book = findBook(state.current.book);
-    var k = key(book.name, state.current.chapter);
-    var e = state.entries[k] || {};
-    entryTitle.textContent = book.name + " " + state.current.chapter;
-    exampleFlag.hidden = k !== EXAMPLE_KEY;
-    fields.summary.value = e.summary || "";
-    fields.question.value = e.question || "";
-    renderSections(e.sections);
-    prevBtn.disabled = state.current.chapter<=1;
-    nextBtn.disabled = state.current.chapter>=book.chapters;
+    var c = ctx();
+    var editable = isEditable();
+    var book = findBook(c.current.book);
+    var k = key(book.name, c.current.chapter);
+    var e = c.entries[k] || {};
+    entryTitle.textContent = book.name + " " + c.current.chapter;
+    exampleFlag.hidden = !(editable && k === EXAMPLE_KEY);
+    renderSections(e.sections, editable);
+    prevBtn.disabled = c.current.chapter<=1;
+    nextBtn.disabled = c.current.chapter>=book.chapters;
     if (clearArmed){
       clearTimeout(clearArmedTimer);
       clearArmed = false;
       clearBtn.textContent = "Clear this chapter";
       clearBtn.classList.remove("confirming");
     }
+    applyViewMode();
   }
 
   prevBtn.addEventListener("click", function(){
-    if (state.current.chapter>1){ state.current.chapter--; renderChapterGrid(); renderEntry(); }
+    var c = ctx();
+    if (c.current.chapter>1){ c.current.chapter--; renderChapterGrid(); renderEntry(); }
   });
   nextBtn.addEventListener("click", function(){
-    var book = findBook(state.current.book);
-    if (state.current.chapter<book.chapters){ state.current.chapter++; renderChapterGrid(); renderEntry(); }
+    var c = ctx();
+    var book = findBook(c.current.book);
+    if (c.current.chapter<book.chapters){ c.current.chapter++; renderChapterGrid(); renderEntry(); }
   });
 
   form.addEventListener("submit", function(ev){
     ev.preventDefault();
+    if (!isEditable()) return;
     var book = findBook(state.current.book);
     var k = key(book.name, state.current.chapter);
     state.entries[k] = {
-      summary: fields.summary.value.trim(),
-      question: fields.question.value.trim(),
       sections: readSectionsFromDom()
     };
     exampleFlag.hidden = true;
@@ -658,6 +759,7 @@
   });
 
   clearBtn.addEventListener("click", function(){
+    if (!isEditable()) return;
     var book = findBook(state.current.book);
     var k = key(book.name, state.current.chapter);
     if (!state.entries[k]) return;
@@ -684,22 +786,18 @@
 
   // ---------- Findings ----------
   function renderFindings(){
-    var historyItems = [], geoItems = [], promiseItems = [], commandItems = [];
-    state.books.forEach(function(book){
+    var historyItems = [], promiseItems = [], commandItems = [];
+    var ctxData = ctx();
+    ctxData.books.forEach(function(book){
       for (var c=1;c<=book.chapters;c++){
-        var e = state.entries[key(book.name,c)];
+        var e = ctxData.entries[key(book.name,c)];
         if (!e) continue;
         var ref = book.name + " " + c;
-        if (e.summary) historyItems.push({ref:ref, text:e.summary});
         if (e.sections && e.sections.length){
           e.sections.forEach(function(s){
             var sref = ref + (s.title? " — "+s.title : "");
+            if (s.summary) historyItems.push({ref:sref, text:s.summary});
             if (s.observations) historyItems.push({ref:sref, text:s.observations});
-            if (s.geography){
-              s.geography.split(",").map(function(t){return t.trim();}).filter(Boolean).forEach(function(place){
-                geoItems.push({ref:sref, text:place});
-              });
-            }
             if (s.promises && !/^none\b/i.test(s.promises.trim())) promiseItems.push({ref:sref, text:s.promises});
             if (s.commands && !/^none\b/i.test(s.commands.trim())) commandItems.push({ref:sref, text:s.commands});
           });
@@ -714,11 +812,48 @@
         return '<li>'+esc(it.text)+'<span class="findings-ref">'+esc(it.ref)+'</span></li>';
       }).join("") + '</ul>';
     }
-    fill("list-history", historyItems, "Nothing logged yet — save a chapter's history notes to start your timeline.");
-    fill("list-geography", geoItems, "No places logged yet — list them, comma-separated, in a chapter's Geography field.");
+    fill("list-history", historyItems, "Nothing logged yet — save a section's summary or observations to start your timeline.");
     fill("list-promises", promiseItems, "No promises logged yet.");
     fill("list-commands", commandItems, "No commands logged yet.");
   }
+
+  // ---------- Viewing someone else ----------
+  function renderViewingSelect(){
+    if (!cloudUser){ viewingRow.hidden = true; return; }
+    var others = Object.keys(membersMap).filter(function(uid){ return uid !== cloudUser.uid; });
+    if (!others.length){ viewingRow.hidden = true; return; }
+    viewingRow.hidden = false;
+    viewingSelect.innerHTML = '<option value="">Me</option>' + others.map(function(uid){
+      var m = membersMap[uid];
+      return '<option value="'+esc(uid)+'"'+(uid===viewingUid?" selected":"")+'>'+esc((m && m.name) || "Someone")+'</option>';
+    }).join("");
+  }
+
+  viewingSelect.addEventListener("change", function(){
+    var uid = viewingSelect.value;
+    if (!uid){
+      stopViewingOther();
+      renderBookSelect(); renderChapterGrid(); renderEntry();
+      if (!views.findings.hidden) renderFindings();
+      return;
+    }
+    viewingUid = uid;
+    sectionsList.innerHTML = '<p class="sections-empty">Loading…</p>';
+    fbDb.collection("notebooks").doc(uid).get().then(function(doc){
+      var data = doc.exists ? doc.data() : null;
+      if (data && data.books && data.books.length){
+        var entries = data.entries || {};
+        Object.keys(entries).forEach(function(k){ entries[k] = migrateEntry(entries[k]); });
+        otherData = {books: data.books, entries: entries, current: {book: data.books[0].name, chapter:1}};
+      } else {
+        otherData = {books: DEFAULT_BOOKS, entries: {}, current: {book: DEFAULT_BOOKS[0].name, chapter:1}};
+      }
+      renderBookSelect(); renderChapterGrid(); renderEntry();
+      if (!views.findings.hidden) renderFindings();
+    }).catch(function(){
+      sectionsList.innerHTML = '<p class="sections-empty">Couldn\'t load their notes right now — try again in a moment.</p>';
+    });
+  });
 
   // ---------- Boot ----------
   renderBookSelect();
