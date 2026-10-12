@@ -131,9 +131,9 @@
   var EXAMPLE_KEY = "Genesis-1";
   var EXAMPLE_ENTRY = {
     sections:[
-      {id:"s1", title:"vv. 1–2", summary:"", observations:"", promises:"", commands:"", question:""},
-      {id:"s2", title:"vv. 3–13", summary:"", observations:"", promises:"", commands:"", question:""},
-      {id:"s3", title:"vv. 14–31", summary:"", observations:"", promises:"", commands:"", question:""}
+      {id:"s1", title:"vv. 1–2", summary:"", observations:"", interpretation:"", application:"", promises:"", commands:"", question:""},
+      {id:"s2", title:"vv. 3–13", summary:"", observations:"", interpretation:"", application:"", promises:"", commands:"", question:""},
+      {id:"s3", title:"vv. 14–31", summary:"", observations:"", interpretation:"", application:"", promises:"", commands:"", question:""}
     ]
   };
 
@@ -160,6 +160,8 @@
         delete s.geography;
       }
       if (s.summary === undefined) s.summary = "";
+      if (s.interpretation === undefined) s.interpretation = "";
+      if (s.application === undefined) s.application = "";
       if (s.question === undefined) s.question = "";
     });
     if (e.summary || e.question){
@@ -453,7 +455,7 @@
 
   function hasSections(e){
     return e && e.sections && e.sections.some(function(s){
-      return s.title||s.summary||s.observations||s.promises||s.commands||s.question;
+      return s.title||s.summary||s.observations||s.interpretation||s.application||s.promises||s.commands||s.question;
     });
   }
   function countDone(book){
@@ -607,6 +609,14 @@
         '<label><span class="tag">Observations</span>Who, what happened, when, what led here? (Places named too.)</label>'+
         '<textarea rows="2" data-role="observations" placeholder="What do you notice in this part?">'+esc(s.observations||"")+'</textarea>'+
       '</div>'+
+      '<div class="mini-field interpretation">'+
+        '<label><span class="tag">Interpretation</span>What does it mean?</label>'+
+        '<textarea rows="2" data-role="interpretation" placeholder="What is this part actually saying, and why?">'+esc(s.interpretation||"")+'</textarea>'+
+      '</div>'+
+      '<div class="mini-field application">'+
+        '<label><span class="tag">Application</span>What will you do about it?</label>'+
+        '<textarea rows="2" data-role="application" placeholder="How does this change what you think or do?">'+esc(s.application||"")+'</textarea>'+
+      '</div>'+
       '<div class="mini-row2">'+
         '<div class="mini-field promises">'+
           '<label><span class="tag">Promises</span>What God says He will do</label>'+
@@ -644,6 +654,8 @@
     var rows = [
       ["Summary", s.summary],
       ["Observations", s.observations],
+      ["Interpretation", s.interpretation],
+      ["Application", s.application],
       ["Promises", s.promises],
       ["Commands", s.commands],
       ["Question", s.question]
@@ -677,13 +689,15 @@
       var title = row.querySelector('[data-role="title"]').value.trim();
       var summary = row.querySelector('[data-role="summary"]').value.trim();
       var observations = row.querySelector('[data-role="observations"]').value.trim();
+      var interpretation = row.querySelector('[data-role="interpretation"]').value.trim();
+      var application = row.querySelector('[data-role="application"]').value.trim();
       var promises = row.querySelector('[data-role="promises"]').value.trim();
       var commands = row.querySelector('[data-role="commands"]').value.trim();
       var question = row.querySelector('[data-role="question"]').value.trim();
-      if (title || summary || observations || promises || commands || question){
+      if (title || summary || observations || interpretation || application || promises || commands || question){
         out.push({
           id: row.getAttribute("data-id") || newSectionId(),
-          title:title, summary:summary, observations:observations, promises:promises, commands:commands, question:question
+          title:title, summary:summary, observations:observations, interpretation:interpretation, application:application, promises:promises, commands:commands, question:question
         });
       }
     });
@@ -695,7 +709,7 @@
     var placeholder = sectionsList.querySelector(".sections-empty");
     if (placeholder) sectionsList.innerHTML = "";
     var num = sectionsList.querySelectorAll(".section-row").length + 1;
-    sectionsList.insertAdjacentHTML("beforeend", sectionRowHtml({id:newSectionId(), title:"", summary:"", observations:"", promises:"", commands:"", question:""}, num));
+    sectionsList.insertAdjacentHTML("beforeend", sectionRowHtml({id:newSectionId(), title:"", summary:"", observations:"", interpretation:"", application:"", promises:"", commands:"", question:""}, num));
     var rows = sectionsList.querySelectorAll(".section-row");
     var last = rows[rows.length-1];
     wireSectionRemove(last.querySelector('[data-role="remove"]'));
@@ -798,6 +812,7 @@
             var sref = ref + (s.title? " — "+s.title : "");
             if (s.summary) historyItems.push({ref:sref, text:s.summary});
             if (s.observations) historyItems.push({ref:sref, text:s.observations});
+            if (s.interpretation) historyItems.push({ref:sref, text:s.interpretation});
             if (s.promises && !/^none\b/i.test(s.promises.trim())) promiseItems.push({ref:sref, text:s.promises});
             if (s.commands && !/^none\b/i.test(s.commands.trim())) commandItems.push({ref:sref, text:s.commands});
           });
