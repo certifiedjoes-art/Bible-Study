@@ -131,16 +131,19 @@
   var EXAMPLE_KEY = "Genesis-1";
   var EXAMPLE_ENTRY = {
     sections:[
-      {id:"s1", title:"vv. 1–2", summary:"", observations:"", interpretation:"", application:"", promises:"", commands:"", question:""},
-      {id:"s2", title:"vv. 3–13", summary:"", observations:"", interpretation:"", application:"", promises:"", commands:"", question:""},
-      {id:"s3", title:"vv. 14–31", summary:"", observations:"", interpretation:"", application:"", promises:"", commands:"", question:""}
+      {id:"s1", title:"vv. 1–2", summary:"", findings:[], promises:"", commands:"", question:""},
+      {id:"s2", title:"vv. 3–13", summary:"", findings:[], promises:"", commands:"", question:""},
+      {id:"s3", title:"vv. 14–31", summary:"", findings:[], promises:"", commands:"", question:""}
     ]
   };
 
+  function newFindingId(){ return "f" + Date.now() + Math.random().toString(36).slice(2,6); }
+
   // Older saves used shapes this app no longer has: flat chapter-level fields (before
-  // sections existed), a separate per-section Geography field, and chapter-level
-  // Summary/Question (before they moved into each section). Fold all of that forward
-  // so nothing already written gets lost.
+  // sections existed), a separate per-section Geography field, chapter-level
+  // Summary/Question (before they moved into each section), and single Observations/
+  // Interpretation/Application boxes per section (before those became a list of
+  // grouped findings). Fold all of that forward so nothing already written gets lost.
   function migrateEntry(e){
     if (!e) return e;
     if (!e.sections) e.sections = [];
@@ -159,14 +162,20 @@
         s.observations = (s.observations ? s.observations + "\n" : "") + "Geography: " + s.geography;
         delete s.geography;
       }
+      if (!s.findings){
+        var obsText = s.observations, interpText = s.interpretation, appText = s.application;
+        s.findings = [];
+        if (obsText || interpText || appText){
+          s.findings.push({id:newFindingId(), observation:obsText||"", interpretation:interpText||"", application:appText||""});
+        }
+      }
+      delete s.observations; delete s.interpretation; delete s.application;
       if (s.summary === undefined) s.summary = "";
-      if (s.interpretation === undefined) s.interpretation = "";
-      if (s.application === undefined) s.application = "";
       if (s.question === undefined) s.question = "";
     });
     if (e.summary || e.question){
       if (!e.sections.length){
-        e.sections.push({id:"m"+Date.now()+Math.random().toString(36).slice(2,6), title:"", summary:e.summary||"", observations:"", promises:"", commands:"", question:e.question||""});
+        e.sections.push({id:"m"+Date.now()+Math.random().toString(36).slice(2,6), title:"", summary:e.summary||"", findings:[], promises:"", commands:"", question:e.question||""});
       } else {
         if (e.summary && !e.sections[0].summary) e.sections[0].summary = e.summary;
         if (e.question && !e.sections[0].question) e.sections[0].question = e.question;
@@ -455,7 +464,7 @@
 
   function hasSections(e){
     return e && e.sections && e.sections.some(function(s){
-      return s.title||s.summary||s.observations||s.interpretation||s.application||s.promises||s.commands||s.question;
+      return s.title||s.summary||(s.findings&&s.findings.length)||s.promises||s.commands||s.question;
     });
   }
   function countDone(book){
@@ -596,6 +605,32 @@
 
   function newSectionId(){ return "s" + Date.now() + Math.random().toString(36).slice(2,6); }
 
+  function findingRowHtml(f, num){
+    return '<div class="finding-row" data-id="'+esc(f.id)+'">'+
+      '<div class="finding-row-head"><span class="finding-num">Finding '+num+'</span>'+
+        '<button type="button" class="finding-remove" data-role="removeFinding" aria-label="Remove finding">✕</button></div>'+
+      '<div class="mini-field observations">'+
+        '<label><span class="tag">Observation</span>Who, what happened, when, what led here? (Places named too.)</label>'+
+        '<textarea rows="2" data-role="observation" placeholder="What do you notice?">'+esc(f.observation||"")+'</textarea>'+
+      '</div>'+
+      '<div class="mini-field interpretation">'+
+        '<label><span class="tag">Interpretation</span>What does it mean?</label>'+
+        '<textarea rows="2" data-role="interpretation" placeholder="What is this actually saying, and why?">'+esc(f.interpretation||"")+'</textarea>'+
+      '</div>'+
+      '<div class="mini-field application">'+
+        '<label><span class="tag">Application</span>What will you do about it?</label>'+
+        '<textarea rows="2" data-role="application" placeholder="How does this change what you think or do?">'+esc(f.application||"")+'</textarea>'+
+      '</div>'+
+    '</div>';
+  }
+
+  function renderFindingsListHtml(findings){
+    if (!findings || !findings.length){
+      return '<p class="findings-list-empty">No findings yet — add one below for each thing you notice.</p>';
+    }
+    return findings.map(function(f,i){ return findingRowHtml(f, i+1); }).join("");
+  }
+
   function sectionRowHtml(s, num){
     return '<div class="section-row" data-id="'+esc(s.id)+'">'+
       '<div class="section-row-head">'+
@@ -607,18 +642,8 @@
         '<label><span class="tag">Summary</span>One sentence, in your own words</label>'+
         '<input type="text" data-role="summary" placeholder="e.g. God speaks this part of the world into being" value="'+esc(s.summary||"")+'">'+
       '</div>'+
-      '<div class="mini-field observations">'+
-        '<label><span class="tag">Observations</span>Who, what happened, when, what led here? (Places named too.)</label>'+
-        '<textarea rows="2" data-role="observations" placeholder="What do you notice in this part?">'+esc(s.observations||"")+'</textarea>'+
-      '</div>'+
-      '<div class="mini-field interpretation">'+
-        '<label><span class="tag">Interpretation</span>What does it mean?</label>'+
-        '<textarea rows="2" data-role="interpretation" placeholder="What is this part actually saying, and why?">'+esc(s.interpretation||"")+'</textarea>'+
-      '</div>'+
-      '<div class="mini-field application">'+
-        '<label><span class="tag">Application</span>What will you do about it?</label>'+
-        '<textarea rows="2" data-role="application" placeholder="How does this change what you think or do?">'+esc(s.application||"")+'</textarea>'+
-      '</div>'+
+      '<div class="findings-list" data-role="findingsList">'+renderFindingsListHtml(s.findings)+'</div>'+
+      '<button type="button" class="add-finding-btn" data-role="addFinding">+ Add finding</button>'+
       '<div class="mini-row2">'+
         '<div class="mini-field promises">'+
           '<label><span class="tag">Promises</span>What God says He will do</label>'+
@@ -636,6 +661,22 @@
     '</div>';
   }
 
+  function wireFindingRemove(btn){
+    btn.addEventListener("click", function(){
+      if (!isEditable()) return;
+      var list = btn.closest(".findings-list");
+      btn.closest(".finding-row").remove();
+      var rows = list.querySelectorAll(".finding-row");
+      if (!rows.length){
+        list.innerHTML = '<p class="findings-list-empty">No findings yet — add one below for each thing you notice.</p>';
+      } else {
+        Array.prototype.forEach.call(rows, function(row,i){ row.querySelector(".finding-num").textContent = "Finding " + (i+1); });
+      }
+      clearTimeout(autoSaveTimer);
+      saveEntry("Saved automatically");
+    });
+  }
+
   function wireSectionRemove(btn){
     btn.addEventListener("click", function(){
       if (!isEditable()) return;
@@ -649,6 +690,27 @@
     });
   }
 
+  function wireSectionRow(row){
+    var removeBtn = row.querySelector('[data-role="remove"]');
+    if (removeBtn) wireSectionRemove(removeBtn);
+    var addFindingBtn = row.querySelector('[data-role="addFinding"]');
+    if (addFindingBtn){
+      addFindingBtn.addEventListener("click", function(){
+        if (!isEditable()) return;
+        var list = row.querySelector('[data-role="findingsList"]');
+        var placeholder = list.querySelector(".findings-list-empty");
+        if (placeholder) list.innerHTML = "";
+        var num = list.querySelectorAll(".finding-row").length + 1;
+        list.insertAdjacentHTML("beforeend", findingRowHtml({id:newFindingId(), observation:"", interpretation:"", application:""}, num));
+        var rows = list.querySelectorAll(".finding-row");
+        var last = rows[rows.length-1];
+        wireFindingRemove(last.querySelector('[data-role="removeFinding"]'));
+        last.querySelector('[data-role="observation"]').focus();
+      });
+    }
+    Array.prototype.forEach.call(row.querySelectorAll('[data-role="removeFinding"]'), wireFindingRemove);
+  }
+
   function renumberSections(){
     Array.prototype.forEach.call(sectionsList.querySelectorAll(".section-row"), function(row, i){
       row.querySelector(".section-num").textContent = i+1;
@@ -656,21 +718,24 @@
   }
 
   function sectionReadOnlyHtml(s, num){
-    var rows = [
-      ["Summary", s.summary],
-      ["Observations", s.observations],
-      ["Interpretation", s.interpretation],
-      ["Application", s.application],
-      ["Promises", s.promises],
-      ["Commands", s.commands],
-      ["Question", s.question]
-    ].filter(function(pair){ return pair[1]; }).map(function(pair){
-      return '<div class="ro-row"><span class="tag">'+esc(pair[0])+'</span>'+esc(pair[1])+'</div>';
+    var summaryRow = s.summary ? '<div class="ro-row"><span class="tag">Summary</span>'+esc(s.summary)+'</div>' : '';
+    var findingsHtml = (s.findings||[]).map(function(f,i){
+      var parts = [];
+      if (f.observation) parts.push('<div class="ro-row"><span class="tag">Observation</span>'+esc(f.observation)+'</div>');
+      if (f.interpretation) parts.push('<div class="ro-row"><span class="tag">Interpretation</span>'+esc(f.interpretation)+'</div>');
+      if (f.application) parts.push('<div class="ro-row"><span class="tag">Application</span>'+esc(f.application)+'</div>');
+      if (!parts.length) return '';
+      return '<div class="finding-ro"><div class="finding-ro-num">Finding '+(i+1)+'</div>'+parts.join("")+'</div>';
     }).join("");
+    var tailRows = [["Promises", s.promises], ["Commands", s.commands], ["Question", s.question]]
+      .filter(function(pair){ return pair[1]; })
+      .map(function(pair){ return '<div class="ro-row"><span class="tag">'+esc(pair[0])+'</span>'+esc(pair[1])+'</div>'; })
+      .join("");
+    var body = summaryRow + findingsHtml + tailRows;
     return '<div class="section-row readonly">'+
       '<div class="section-row-head"><span class="section-num">'+num+'</span>'+
         '<span class="section-title-ro">'+esc(s.title||"(untitled section)")+'</span></div>'+
-      (rows || '<p class="sections-empty">Nothing logged in this section yet.</p>') +
+      (body || '<p class="sections-empty">Nothing logged in this section yet.</p>') +
     '</div>';
   }
 
@@ -681,7 +746,7 @@
     }
     if (editable){
       sectionsList.innerHTML = sections.map(function(s,i){ return sectionRowHtml(s, i+1); }).join("");
-      Array.prototype.forEach.call(sectionsList.querySelectorAll('[data-role="remove"]'), wireSectionRemove);
+      Array.prototype.forEach.call(sectionsList.querySelectorAll(".section-row"), wireSectionRow);
     } else {
       sectionsList.innerHTML = sections.map(function(s,i){ return sectionReadOnlyHtml(s, i+1); }).join("");
     }
@@ -693,16 +758,25 @@
     Array.prototype.forEach.call(rows, function(row){
       var title = row.querySelector('[data-role="title"]').value.trim();
       var summary = row.querySelector('[data-role="summary"]').value.trim();
-      var observations = row.querySelector('[data-role="observations"]').value.trim();
-      var interpretation = row.querySelector('[data-role="interpretation"]').value.trim();
-      var application = row.querySelector('[data-role="application"]').value.trim();
       var promises = row.querySelector('[data-role="promises"]').value.trim();
       var commands = row.querySelector('[data-role="commands"]').value.trim();
       var question = row.querySelector('[data-role="question"]').value.trim();
-      if (title || summary || observations || interpretation || application || promises || commands || question){
+      var findings = [];
+      Array.prototype.forEach.call(row.querySelectorAll(".finding-row"), function(fr){
+        var observation = fr.querySelector('[data-role="observation"]').value.trim();
+        var interpretation = fr.querySelector('[data-role="interpretation"]').value.trim();
+        var application = fr.querySelector('[data-role="application"]').value.trim();
+        if (observation || interpretation || application){
+          findings.push({
+            id: fr.getAttribute("data-id") || newFindingId(),
+            observation:observation, interpretation:interpretation, application:application
+          });
+        }
+      });
+      if (title || summary || findings.length || promises || commands || question){
         out.push({
           id: row.getAttribute("data-id") || newSectionId(),
-          title:title, summary:summary, observations:observations, interpretation:interpretation, application:application, promises:promises, commands:commands, question:question
+          title:title, summary:summary, findings:findings, promises:promises, commands:commands, question:question
         });
       }
     });
@@ -714,10 +788,10 @@
     var placeholder = sectionsList.querySelector(".sections-empty");
     if (placeholder) sectionsList.innerHTML = "";
     var num = sectionsList.querySelectorAll(".section-row").length + 1;
-    sectionsList.insertAdjacentHTML("beforeend", sectionRowHtml({id:newSectionId(), title:"", summary:"", observations:"", interpretation:"", application:"", promises:"", commands:"", question:""}, num));
+    sectionsList.insertAdjacentHTML("beforeend", sectionRowHtml({id:newSectionId(), title:"", summary:"", findings:[], promises:"", commands:"", question:""}, num));
     var rows = sectionsList.querySelectorAll(".section-row");
     var last = rows[rows.length-1];
-    wireSectionRemove(last.querySelector('[data-role="remove"]'));
+    wireSectionRow(last);
     last.querySelector('[data-role="title"]').focus();
   });
 
@@ -863,8 +937,11 @@
           e.sections.forEach(function(s){
             var sref = ref + (s.title? " — "+s.title : "");
             if (s.summary) historyItems.push({ref:sref, text:s.summary});
-            if (s.observations) historyItems.push({ref:sref, text:s.observations});
-            if (s.interpretation) historyItems.push({ref:sref, text:s.interpretation});
+            (s.findings||[]).forEach(function(f, i){
+              var fref = sref + " (finding " + (i+1) + ")";
+              if (f.observation) historyItems.push({ref:fref, text:f.observation});
+              if (f.interpretation) historyItems.push({ref:fref, text:f.interpretation});
+            });
             if (s.promises && !/^none\b/i.test(s.promises.trim())) promiseItems.push({ref:sref, text:s.promises});
             if (s.commands && !/^none\b/i.test(s.commands.trim())) commandItems.push({ref:sref, text:s.commands});
           });
