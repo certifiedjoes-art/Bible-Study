@@ -484,6 +484,7 @@
     chapterGrid.innerHTML = html;
     Array.prototype.forEach.call(chapterGrid.querySelectorAll("button"), function(btn){
       btn.addEventListener("click", function(){
+        flushAutoSave();
         ctx().current.chapter = parseInt(btn.getAttribute("data-ch"),10);
         renderChapterGrid();
         renderEntry();
@@ -492,6 +493,7 @@
   }
 
   bookSelect.addEventListener("change", function(){
+    flushAutoSave();
     var c = ctx();
     c.current.book = bookSelect.value;
     c.current.chapter = 1;
@@ -636,11 +638,14 @@
 
   function wireSectionRemove(btn){
     btn.addEventListener("click", function(){
+      if (!isEditable()) return;
       btn.closest(".section-row").remove();
       renumberSections();
       if (!sectionsList.querySelector(".section-row")){
         sectionsList.innerHTML = '<p class="sections-empty">No sections yet — add one below, starting from the top of the chapter.</p>';
       }
+      clearTimeout(autoSaveTimer);
+      saveEntry("Saved automatically");
     });
   }
 
@@ -716,6 +721,55 @@
     last.querySelector('[data-role="title"]').focus();
   });
 
+  // ---------- Autosave ----------
+  // Writing is saved as you go (debounced ~1s after you stop typing), so nothing is
+  // lost if you navigate away or close the app without tapping Save. The Save button
+  // still works for an immediate, explicit save.
+  var autoSaveTimer = null;
+
+  function saveEntry(statusMsg){
+    if (!isEditable()) return;
+    var book = findBook(state.current.book);
+    var k = key(book.name, state.current.chapter);
+    state.entries[k] = {
+      sections: readSectionsFromDom()
+    };
+    exampleFlag.hidden = true;
+    renderChapterGrid();
+    persist(statusMsg);
+  }
+
+  function scheduleAutoSave(){
+    if (!isEditable()) return;
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(function(){
+      autoSaveTimer = null;
+      saveEntry("Saved automatically");
+    }, 900);
+  }
+
+  function flushAutoSave(){
+    if (autoSaveTimer){
+      clearTimeout(autoSaveTimer);
+      autoSaveTimer = null;
+      saveEntry("Saved automatically");
+    }
+  }
+
+  sectionsList.addEventListener("input", function(){
+    if (!isEditable()) return;
+    scheduleAutoSave();
+  });
+
+  // Catch-alls so a pending autosave never gets lost: flush right before the page
+  // might go away, and periodically while the tab is hidden (phone locked, app
+  // switched away from) since a setTimeout can be paused in the background.
+  window.addEventListener("pagehide", flushAutoSave);
+  window.addEventListener("beforeunload", flushAutoSave);
+  document.addEventListener("visibilitychange", function(){
+    if (document.visibilityState === "hidden") flushAutoSave();
+  });
+
   function applyViewMode(){
     var editable = isEditable();
     addSectionBtn.hidden = !editable;
@@ -750,10 +804,12 @@
   }
 
   prevBtn.addEventListener("click", function(){
+    flushAutoSave();
     var c = ctx();
     if (c.current.chapter>1){ c.current.chapter--; renderChapterGrid(); renderEntry(); }
   });
   nextBtn.addEventListener("click", function(){
+    flushAutoSave();
     var c = ctx();
     var book = findBook(c.current.book);
     if (c.current.chapter<book.chapters){ c.current.chapter++; renderChapterGrid(); renderEntry(); }
@@ -761,19 +817,15 @@
 
   form.addEventListener("submit", function(ev){
     ev.preventDefault();
-    if (!isEditable()) return;
-    var book = findBook(state.current.book);
-    var k = key(book.name, state.current.chapter);
-    state.entries[k] = {
-      sections: readSectionsFromDom()
-    };
-    exampleFlag.hidden = true;
-    renderChapterGrid();
-    persist("Saved " + book.name + " " + state.current.chapter);
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = null;
+    saveEntry("Saved");
   });
 
   clearBtn.addEventListener("click", function(){
     if (!isEditable()) return;
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = null;
     var book = findBook(state.current.book);
     var k = key(book.name, state.current.chapter);
     if (!state.entries[k]) return;
@@ -845,6 +897,7 @@
   }
 
   viewingSelect.addEventListener("change", function(){
+    flushAutoSave();
     var uid = viewingSelect.value;
     if (!uid){
       stopViewingOther();
