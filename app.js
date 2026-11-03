@@ -311,6 +311,7 @@
     if (!cloudAvailable || !cloudUser) return;
     clearTimeout(cloudSaveTimer);
     cloudSaveTimer = setTimeout(function(){
+      cloudSaveTimer = null;
       setSyncUI("saving");
       cloudDocRef(cloudUser.uid).set({
         books: state.books,
@@ -322,6 +323,16 @@
         setSyncUI("error");
       });
     }, 800);
+  }
+
+  // JSON with keys sorted, so a copy that came back from the cloud (which reorders keys)
+  // still compares equal to the local one.
+  function stableJson(v){
+    if (Array.isArray(v)) return "[" + v.map(stableJson).join(",") + "]";
+    if (v && typeof v === "object"){
+      return "{" + Object.keys(v).sort().map(function(k){ return JSON.stringify(k) + ":" + stableJson(v[k]); }).join(",") + "}";
+    }
+    return JSON.stringify(v === undefined ? null : v);
   }
 
   function applyCloudSnapshot(data){
@@ -404,7 +415,14 @@
         // Stay in sync with changes made from another device.
         unsubscribeCloudSnapshot = ref.onSnapshot(function(snap){
           if (!cloudLoaded || !snap.exists) return;
-          applyCloudSnapshot(snap.data());
+          // Never redraw the form from the cloud while you're typing, or for the echo
+          // of your own save — that wiped the box you were in (and any empty new finding).
+          if (snap.metadata && snap.metadata.hasPendingWrites) return;
+          if (autoSaveTimer || cloudSaveTimer) return;
+          if (sectionsList.contains(document.activeElement)) return;
+          var data = snap.data();
+          if (stableJson({books:data.books, entries:data.entries}) === stableJson({books:state.books, entries:state.entries})) return;
+          applyCloudSnapshot(data);
         });
       }).catch(function(){
         setSyncUI("error");
